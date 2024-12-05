@@ -11,44 +11,59 @@ use Illuminate\Support\Facades\Storage;
 
 class PostController extends Controller
 {
-    /**
-     * Menampilkan daftar posts dengan paginasi.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function index()
     {
-        // Mengambil semua data post dengan paginasi 5 data per halaman
         $posts = Post::latest()->paginate(5);
 
-        // Menggunakan PostResource untuk merapikan response
-        return new PostResource(true, 'Data posts retrieved successfully', $posts);
+        $pagination = [
+            'current_page' => $posts->currentPage(),
+            'total_pages' => $posts->lastPage(),
+            'per_page' => $posts->perPage(),
+            'total_items' => $posts->total(),
+            'next_page_url' => $posts->nextPageUrl(),
+            'prev_page_url' => $posts->previousPageUrl(),
+            'first_page_url' => $posts->url(1),
+            'last_page_url' => $posts->url($posts->lastPage())
+        ];
+
+        return new PostResource(true, 'Data posts retrieved successfully', [
+            'posts' => $posts->items(),
+            'pagination' => $pagination
+        ]);
     }
 
-    /**
-     * Menampilkan post berdasarkan ID.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function show($id)
     {
-        // Mencari post berdasarkan ID
+        $perPage = 5;
+        $totalItems = Post::count();
+        $totalPages = ceil($totalItems / $perPage);
+
         $post = Post::findOrFail($id);
 
-        // Menggunakan PostResource untuk merapikan response
-        return new PostResource(true, 'Post retrieved successfully', $post);
+        $currentPage = ceil(($id / $perPage));
+
+        $nextPageUrl = ($currentPage < $totalPages) ? url('/api/posts?page=' . ($currentPage + 1)) : null;
+        $prevPageUrl = ($currentPage > 1) ? url('/api/posts?page=' . ($currentPage - 1)) : null;
+        $firstPageUrl = url('/api/posts?page=1');
+        $lastPageUrl = ($totalPages > 1) ? url('/api/posts?page=' . $totalPages) : null;
+
+        return new PostResource(true, 'Post retrieved successfully', [
+            'posts' => [$post],
+            'pagination' => [
+                'current_page' => $currentPage,
+                'total_pages' => $totalPages,
+                'per_page' => $perPage,
+                'total_items' => $totalItems,
+                'next_page_url' => $nextPageUrl,
+                'prev_page_url' => $prevPageUrl,
+                'first_page_url' => $firstPageUrl,
+                'last_page_url' => $lastPageUrl,
+            ]
+        ]);
     }
 
-    /**
-     * Menambahkan post baru.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function store(Request $request)
     {
-        // Menentukan aturan validasi
         $validator = Validator::make($request->all(), [
             'image'     => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'title'     => 'required',
@@ -57,16 +72,13 @@ class PostController extends Controller
             'category'  => 'required',
         ]);
 
-        // Cek apakah validasi gagal
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        // Menyimpan gambar
         $image = $request->file('image');
         $image->storeAs('public/posts', $image->hashName());
 
-        // Membuat post baru
         $post = Post::create([
             'image'     => $image->hashName(),
             'title'     => $request->title,
@@ -75,20 +87,11 @@ class PostController extends Controller
             'category'  => $request->category,
         ]);
 
-        // Menggunakan PostResource untuk merapikan response
         return new PostResource(true, 'Data Post Berhasil Ditambahkan!', $post);
     }
 
-    /**
-     * Mengupdate post berdasarkan ID.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function update(Request $request, $id)
     {
-        // Menentukan aturan validasi
         $validator = Validator::make($request->all(), [
             'title'     => 'required',
             'content'   => 'required',
@@ -96,24 +99,17 @@ class PostController extends Controller
             'category'  => 'required',
         ]);
 
-        // Cek apakah validasi gagal
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        // Mencari post berdasarkan ID
         $post = Post::findOrFail($id);
 
-        // Cek apakah ada gambar baru
         if ($request->hasFile('image')) {
-            // Menyimpan gambar
             $image = $request->file('image');
             $image->storeAs('public/posts', $image->hashName());
-
-            // Menghapus gambar lama
             Storage::delete('public/posts/' . basename($post->image));
 
-            // Mengupdate post dengan gambar baru
             $post->update([
                 'image'     => $image->hashName(),
                 'title'     => $request->title,
@@ -122,7 +118,6 @@ class PostController extends Controller
                 'category'  => $request->category,
             ]);
         } else {
-            // Mengupdate post tanpa gambar
             $post->update([
                 'title'     => $request->title,
                 'content'   => $request->content,
@@ -131,28 +126,17 @@ class PostController extends Controller
             ]);
         }
 
-        // Menggunakan PostResource untuk merapikan response
         return new PostResource(true, 'Data Post Berhasil Diubah!', $post);
     }
 
-    /**
-     * Menghapus post berdasarkan ID.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function destroy($id)
     {
-        // Mencari post berdasarkan ID
         $post = Post::findOrFail($id);
 
-        // Menghapus gambar
         Storage::delete('public/posts/' . basename($post->image));
 
-        // Menghapus post
         $post->delete();
 
-        // Menggunakan PostResource untuk merapikan response
         return new PostResource(true, 'Data Post Berhasil Dihapus!', null);
     }
 }
