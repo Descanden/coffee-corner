@@ -8,12 +8,14 @@ use App\Http\Resources\PostResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Route;
+Route::put('/posts/{id}', [PostController::class, 'update'])->middleware('method.override:POST');
 
 class PostController extends Controller
 {
     public function index()
     {
-        $posts = Post::latest()->paginate(5);
+        $posts = Post::latest()->paginate(6);
 
         $pagination = [
             'current_page' => $posts->currentPage(),
@@ -34,7 +36,7 @@ class PostController extends Controller
 
     public function show($id)
     {
-        $perPage = 5;
+        $perPage = 6;
         $totalItems = Post::count();
         $totalPages = ceil($totalItems / $perPage);
 
@@ -90,6 +92,8 @@ class PostController extends Controller
         return new PostResource(true, 'Data Post Berhasil Ditambahkan!', $post);
     }
 
+
+
     public function update(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
@@ -100,16 +104,20 @@ class PostController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
+            return response()->json(['errors' => $validator->errors()], 422);
         }
 
         $post = Post::findOrFail($id);
 
         if ($request->hasFile('image')) {
+            // Handle uploaded image
             $image = $request->file('image');
             $image->storeAs('public/posts', $image->hashName());
+
+            // Delete old image
             Storage::delete('public/posts/' . basename($post->image));
 
+            // Update post with new image
             $post->update([
                 'image'     => $image->hashName(),
                 'title'     => $request->title,
@@ -117,7 +125,30 @@ class PostController extends Controller
                 'author'    => $request->author,
                 'category'  => $request->category,
             ]);
+        } elseif ($request->image) {
+            // Handle base64 encoded image
+            $imageData = $request->image; // Base64 string from frontend
+            $imageName = uniqid() . '.jpg'; // Change extension if needed
+            $imagePath = storage_path('app/public/posts/' . $imageName);
+
+            // Remove the base64 prefix (if any) and decode the image data
+            $imageData = str_replace('data:image/jpeg;base64,', '', $imageData);
+            $imageData = str_replace(' ', '+', $imageData); // Replace spaces with plus
+            file_put_contents($imagePath, base64_decode($imageData));
+
+            // Delete old image
+            Storage::delete('public/posts/' . basename($post->image));
+
+            // Update post with new image
+            $post->update([
+                'image'     => $imageName,
+                'title'     => $request->title,
+                'content'   => $request->content,
+                'author'    => $request->author,
+                'category'  => $request->category,
+            ]);
         } else {
+            // No new image, just update the post details
             $post->update([
                 'title'     => $request->title,
                 'content'   => $request->content,
@@ -126,13 +157,13 @@ class PostController extends Controller
             ]);
         }
 
-        return new PostResource(true, 'Data Post Berhasil Diubah!', $post);
+        return new PostResource(true, 'Post updated successfully!', $post);
     }
+
 
     public function destroy($id)
     {
         $post = Post::findOrFail($id);
-
         Storage::delete('public/posts/' . basename($post->image));
 
         $post->delete();
